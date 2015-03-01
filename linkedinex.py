@@ -36,12 +36,18 @@ class crm():
         c['BACKGROUND']=dets["summary"]
 # Tags for location and who owns the contact in Linked-In
         c['TAGS']=[]
-        c['TAGS'].append({"TAG_NAME" : "LOC-%s" % dets["location-country"]})
-        c['TAGS'].append({"TAG_NAME" : "LinkedIn-%s" % who})
+        c['TAGS'].append({"TAG_NAME" : "Location-%s" % dets["location-country"].upper()})
+        c['TAGS'].append({"TAG_NAME" : "LIContact-%s" % who})
 
         c['IMAGE_URL']=dets['pictureUrl']
 
-        c['']=dets['linkedInUrl']
+        linkedinurl="https://www.linkedin.com/profile/view?%s" % dets['id']
+
+        c["CONTACTINFOS"]=[{"SUBTYPE": "LinkedInPublicProfileUrl",
+                            "TYPE": "SOCIAL",
+                            "DETAIL": linkedinurl,
+                            "LABEL": "LinkedInPublicProfileUrl"
+                           }]
 
         # find org
         c['LINKS']=[]
@@ -119,6 +125,7 @@ class linkedIn():
 
         # format output
         ret={}
+        ret['id']=id
         ret['first-name']=connection_details['firstName']
         ret['last-name']=connection_details['lastName']
         ret['company']=None
@@ -157,10 +164,6 @@ class linkedIn():
         if connection_details.has_key('pictureUrl'):
             ret['pictureUrl']=connection_details['pictureUrl']
 
-        if connection_details.has_key('siteStandardProfileRequest'):
-            lurl=connection_details['siteStandardProfileRequest'].split("&")[0]
-            ret['linkedInUrl']=lurl
-
         print json.dumps(connection_details, indent=3)
 
         return(ret)
@@ -192,7 +195,6 @@ class controller():
             print "Adding new contact: " + x
             self.crm.addContact(self.linkedIn.getDetails(x), self.who)
 
-
 # for each person:
 # 1) load linked in contacts - this will be a subset of all of our contacts
 # 2) load crm contacts - this should be the whole list of our contacts
@@ -209,7 +211,5 @@ INSIGHT_KEY='1b59c7a6-98cc-4788-b4ae-d063453e04ab'
 
 c=crm(INSIGHT_KEY)
 i=linkedIn(marks_keys, "Mark")
-#c.addOrg("AABBCC")
-#print i.getDetails("Tim Mallyon")
 r=controller(c, i)
 r.run()
