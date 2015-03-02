@@ -113,6 +113,16 @@ class linkedIn():
         for c in conns:
             self.lnk_connections["%s %s" % (c['firstName'],c['lastName'])] = c['id']
 
+    def cleanUp(self):
+###################################################################################
+# the data in linkedIn is crap                                                    #
+# map things like 'Macquarie Bank' and 'Macquarie Offshore' to 'Macquarie Group'  #
+# Also if we can, map the email addresses.                                        #
+###################################################################################
+
+        master={}
+        master['Macquarie']="Macquarie Group"
+
     def print_connections(self):
         connection_id = self.lnk_connections['values'][4]['id']
         connection_details = self.lnk.get_profile(member_id=connection_id,selectors=['headline','first-name','last-name','summary','positions','siteStandardProfileRequest','pictureUrl','location'])

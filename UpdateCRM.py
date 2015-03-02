@@ -96,9 +96,7 @@ class crm():
             self.orgs[x['ORGANISATION_NAME']]=x['ORGANISATION_ID']
 
     def checkDetails(self, id, name, who):
-#        print "*************************************************************************\n\n"
         contact = self.crm.getContact(id)
-#        print json.dumps(contact, indent=3)
         tag={"TAG_NAME" : "LIContact-%s" % who}
         if contact.has_key("TAGS"):
             t=contact["TAGS"]
@@ -109,8 +107,7 @@ class crm():
         else:
             t=[tag]
             contacts["TAGS"]=t
-#        print "++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-#        print json.dumps(contact, indent=3)
+
         self.crm.addContact(contact)
 
 class linkedIn():
@@ -216,10 +213,8 @@ class linkedIn():
         print ret['company']
         for k in self.cleanup_company.keys():
             if ret['company'].find(k)>=0:
-                print "1"
                 ret['company']=self.cleanup_company[k]
                 if self.cleanup_email[k]<>None:
-                    print "2"
                     ret['email']="%s.%s%s" % (ret['first-name'],ret['last-name'],self.cleanup_email[k])
 
     def getCheckDetails(self, id):
