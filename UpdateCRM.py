@@ -78,9 +78,6 @@ class crm():
             c['TAGS'].append({"TAG_NAME" : "Location-%s" % dets["location-country"].upper()})
         c['TAGS'].append({"TAG_NAME" : "LIContact-%s" % who})
 
-# Image URL doesn't work yet - call placed with Insightly support
-#        c['IMAGE_URL']=dets['pictureUrl']
-
 # linkedIn URL
         linkedinurl="https://www.linkedin.com/profile/view?%s" % dets['id']
 
@@ -121,6 +118,11 @@ class crm():
 
 # add to in memory list
         self.ins_contacts["%s %s" % (c['FIRST_NAME'],c['LAST_NAME'])] = c['CONTACT_ID']
+
+# Update image
+        if dets['pictureUrl']<>None:
+            img = urllib2.urlopen(dets['pictureUrl']).read()
+            self.addPicture(c['CONTACT_ID'], img)
         
     def addPicture(self, id, picturestream):
         callREST("PUT","/v2.1/Contacts/%s/Image/name.jpg" % str(id), picturestream)
