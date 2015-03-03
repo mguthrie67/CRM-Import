@@ -2,9 +2,44 @@
 # pip install insightly-python
 # pip install python-linkedin
 
+################################################################################
+# Classes to handle getting data from LinkedIn and importing it to the CRM.    #
+# class crm handles all of the interaction with Insightly.                     #
+# class linkedIn handles the linkedIn stuff.                                   #
+# class controller manages the logic and flows between them.                   #
+#                                                                              #
+# You can import these do work directly with the systems or just run it and it #
+# will go through and apply any updates to Insighly from linkedIn.             #
+################################################################################
+
 import json
 from linkedin import linkedin
 from insightly import Insightly
+
+import base64
+import urllib2
+
+# Utility function to call the REST API for things that don't have a python API
+
+def callREST(method, url, data):
+    response = None
+    text = ''
+    baseurl = 'https://api.insight.ly'
+    full_url = baseurl + url
+    apikey="1b59c7a6-98cc-4788-b4ae-d063453e04ab"
+            
+    request = urllib2.Request(full_url)
+    base64string = base64.encodestring('%s:%s' % (apikey, '')).replace('\n', '')
+    request.add_header("Authorization", "Basic %s" % base64string)   
+    request.get_method = lambda: method
+
+    if method == 'PUT' or method == 'POST':
+        request.add_header('Content-Type', 'application/json')
+        result = urllib2.urlopen(request, data)
+    else:
+        result = urllib2.urlopen(request)
+        text = result.read()
+
 
 class crm():
 ################################
@@ -12,37 +47,41 @@ class crm():
 ################################
 
     def __init__(self, insight_key):
+        
+# link to the crm
         self.crm = Insightly(apikey=insight_key)
+
+# load all contacts and orgs from crm
         self.load_insightly_contacts()
         self.load_insightly_orgs()
 
     def load_insightly_contacts(self):
-###################################
+
 # load contact ids from insightly #
-###################################
         self.ins_contacts = {}
         conns = self.crm.getContacts()
         for c in conns:
             self.ins_contacts["%s %s" % (c['FIRST_NAME'],c['LAST_NAME'])] = c['CONTACT_ID']
 
     def addContact(self,dets,who):
-###################################
-# add a new contact, also a new   #
-# org if required                 #
-###################################
+
+# add a new contact, also a new org if required
         c={}
         c['CONTACT_ID']=0            # id=0 means add a new one
         c['FIRST_NAME']=dets["first-name"]
         c['LAST_NAME']=dets["last-name"]
         c['BACKGROUND']=dets["summary"]
+
 # Tags for location and who owns the contact in Linked-In
         c['TAGS']=[]
         if dets["location-country"]<>None:
             c['TAGS'].append({"TAG_NAME" : "Location-%s" % dets["location-country"].upper()})
         c['TAGS'].append({"TAG_NAME" : "LIContact-%s" % who})
 
-        c['IMAGE_URL']=dets['pictureUrl']
+# Image URL doesn't work yet - call placed with Insightly support
+#        c['IMAGE_URL']=dets['pictureUrl']
 
+# linkedIn URL
         linkedinurl="https://www.linkedin.com/profile/view?%s" % dets['id']
 
         c["CONTACTINFOS"]=[{"SUBTYPE": "LinkedInPublicProfileUrl",
@@ -50,6 +89,8 @@ class crm():
                             "DETAIL": linkedinurl,
                             "LABEL": "LinkedInPublicProfileUrl"
                            }]
+
+# Add email address if we have one
         if dets['email']<>None:
             c["CONTACTINFOS"].append(
                            {
@@ -59,56 +100,134 @@ class crm():
                            }
                           )
 
-        print c
 
-        # find org
+# See if we can find a matching organisation
         c['LINKS']=[]
         l={}
         if self.orgs.has_key(dets['company']):
             c['DEFAULT_LINKED_ORGANISATION']=self.orgs[dets['company']]
             l['ORGANISATION_ID']=self.orgs[dets['company']]
+            
         else:
-#            c['DEFAULT_LINKED_ORGANISATION']=self.addOrg(dets['company'])
+# no match, so add one
             l['ORGANISATION_ID']=self.addOrg(dets['company'])
-            self.orgs[dets['company']]=l['ORGANISATION_ID']
-            print self.orgs
+
+# add job title
         l['ROLE']=dets['title']
         c['LINKS'].append(l)
 
+# add contact record to crm
+        c=self.crm.addContact(c)
+
+# add to in memory list
+        self.ins_contacts["%s %s" % (c['FIRST_NAME'],c['LAST_NAME'])] = c['CONTACT_ID']
+        
+    def addPicture(self, id, picturestream):
+        callREST("PUT","/v2.1/Contacts/%s/Image/name.jpg" % str(id), picturestream)
+
+    def addPicturetoName(self, name, picturestream):
+
+# add a picture to a name
+        if self.ins_contacts.has_key(name):
+            id=self.ins_contacts[name]
+            self.addPicture(id, picturestream)
+        else:
+            print "%s - name not found in Insighly" % name
+
+
+    def addEmailtoName(self, name, email, label="WORK"):
+
+# add an email to a name
+        if self.ins_contacts.has_key(name):
+            id=self.ins_contacts[name]
+            self.addEmail(id, email, label)
+        else:
+            print "%s - name not found in Insighly" % name
+
+    def addEmail(self, id, email, label="WORK"):
+
+# add email to an id
+
+# get the record
+        c=self.crm.getContact(id)
+
+# add email
+        c["CONTACTINFOS"].append({"TYPE": "EMAIL","DETAIL": email,"LABEL": label})
+
+# save
         self.crm.addContact(c)
 
+    def addPhonetoName(self, name, phone, label="WORK"):
+
+# add a phone number to a name
+        if self.ins_contacts.has_key(name):
+            id=self.ins_contacts[name]
+            self.addPhone(id, phone, label)
+        else:
+            print "%s - name not found in Insighly" % name
+
+    def addPhone(self, id, phone, label="WORK"):
+
+# add phone number to an id
+
+# get the record
+        c=self.crm.getContact(id)
+
+# add email
+        c["CONTACTINFOS"].append({"TYPE": "PHONE","DETAIL": phone,"LABEL": label})
+
+# save
+        self.crm.addContact(c)
+
+
     def addOrg(self,name):
-###################################
-# add a new organisation          #
-###################################
+        
+# add a new organisation          
         c={}
         c['ORGANISATION_NAME']=name
         resp=self.crm.addOrganization(c)
+
+# add to list of organisations in memory
+        self.orgs[name]=resp['ORGANISATION_ID']
+
+# return id
         return(resp['ORGANISATION_ID'])
 
-###################################
-# load org ids from insightly     #
-###################################
+
     def load_insightly_orgs(self):
+
+# load org ids from insightly
         o=self.crm.getOrganizations()
         self.orgs={}
         for x in o:
             self.orgs[x['ORGANISATION_NAME']]=x['ORGANISATION_ID']
 
     def checkDetails(self, id, name, who):
+
+# check for an existing entry if it is in step with linkedIn.
+# Extend later. For not it just appends a tag if missing
+
+# get contact details for supplied id
         contact = self.crm.getContact(id)
+
+# create tag to add for owner
         tag={"TAG_NAME" : "LIContact-%s" % who}
+
+# add tag if needed
         if contact.has_key("TAGS"):
             t=contact["TAGS"]
             if tag not in t:
                 t.append(tag)
-                print "Adding tag %s to %s" % (tag, who)
-            contact["TAGS"]=t
+                print "Adding tag %s to %s %s" % (tag, contact['FIRST_NAME'], contact['LAST_NAME'])
+                contact["TAGS"]=t
+                self.crm.addContact(contact)
+
+# no Tags so add from scrach
         else:
             t=[tag]
             contacts["TAGS"]=t
+            self.crm.addContact(contact)
 
-        self.crm.addContact(contact)
 
 class linkedIn():
 #################################
@@ -141,9 +260,8 @@ class linkedIn():
         f.close()
 
     def load_linkedin_connections(self):
-###################################
-# load connect ids from linked in #
-###################################
+
+# load connect ids from linked in
         self.lnk_connections={}
         self.lnk_connections_rev={}
 #       conns=self.lnk.get_connections(selectors=['id','first-name','last-name'],params={'count':5})['values']
@@ -151,17 +269,19 @@ class linkedIn():
         for c in conns:
             self.lnk_connections["%s %s" % (c['firstName'],c['lastName'])] = c['id']
             self.lnk_connections_rev[c['id']] = ["%s %s" % (c['firstName'],c['lastName'])]
-
-    def print_connections(self):
-        connection_id = self.lnk_connections['values'][4]['id']
-        connection_details = self.lnk.get_profile(member_id=connection_id,selectors=['headline','first-name','last-name','summary','positions','siteStandardProfileRequest','pictureUrl','location'])
-        print json.dumps(connection_details, indent=1)
+            
 
     def getDetails(self, name):
+
+# for a given name, get the details from LinkedIn
+
+# get id from name
         id=self.lnk_connections[name]
+
+# get details from LinkedIn
         connection_details = self.lnk.get_profile(member_id=id,selectors=['headline','first-name','last-name','summary','positions','siteStandardProfileRequest','pictureUrl','location'])
 
-        # format output
+# format output
         ret={}
         ret['id']=id
         ret['first-name']=connection_details['firstName']
@@ -178,10 +298,9 @@ class linkedIn():
         if connection_details.has_key('summary'):
             ret['summary']=ret['summary'] + "\n\n" + connection_details['summary']
         else:
-            ret['summary']="nothing\n"
-        ret['summary']=ret['summary'] + "\n- - - - - - - - - - -\n\n"
+            ret['summary']=ret['summary'] + "nothing\n"
 
-        # update company and position if available
+# update company and position if available
         if connection_details.has_key('positions'):
             if connection_details['positions'].has_key('values'):
                 pos=connection_details['positions']['values'][0]
@@ -190,7 +309,8 @@ class linkedIn():
                         ret['company']=pos['company']['name']
                 if pos.has_key('title'):
                     ret['title']=pos['title']
-        # location
+
+# location
         if connection_details.has_key('location'):
             location=connection_details['location']
             if location.has_key('country'):
@@ -202,20 +322,22 @@ class linkedIn():
         if connection_details.has_key('pictureUrl'):
             ret['pictureUrl']=connection_details['pictureUrl']
 
+# data is a bit crap so we try to clean it up before using it
         self.cleanUp(ret)
 
         return(ret)
 
     def cleanUp(self, ret):
-##########################################################
-# the linkedIn data is shithouse so we try to clean it   #
-##########################################################
-        print ret['company']
+
+# the linkedIn data is shithouse so we try to clean it
+
+# map similar company names to a single name, also add company email if we know it
         for k in self.cleanup_company.keys():
             if ret['company'].find(k)>=0:
                 ret['company']=self.cleanup_company[k]
                 if self.cleanup_email[k]<>None:
                     ret['email']="%s.%s%s" % (ret['first-name'],ret['last-name'],self.cleanup_email[k])
+
 
     def getCheckDetails(self, id):
 # simple check for now - can extend it later. Just pass name back as we already have that
@@ -223,14 +345,19 @@ class linkedIn():
         return(self.lnk_connections_rev[id])
 
 class controller():
+###############################################
+# processing engine                           #
+###############################################
 
     def __init__(self, crm, linkedIn):
         self.crm=crm
         self.linkedIn=linkedIn
         self.who=self.linkedIn.who
         self.match()
+        self.load_exclusions()
 
     def match(self):
+
 # match the two sets of ids
         print "Looking for matches..."
 
@@ -244,19 +371,30 @@ class controller():
                 if k<>"private private":
                     self.nomapping.append(k)
 
+    def load_exclusions(self):
+        f=open("cleanup_exclude.txt")
+        self.exclude=[]
+        for line in f.readlines():
+            self.exclude.append(line.strip())
+        f.close()
+
     def run(self):
+
+# if there is no mapping then add user unless on the blocked list
         for x in self.nomapping:
-            print "Adding new contact: " + x.encode('ascii', 'ignore').decode('ascii')
-            self.crm.addContact(self.linkedIn.getDetails(x), self.who)
+            if x not in self.exclude:
+                print "Adding new contact: " + x.encode('ascii', 'ignore').decode('ascii')
+                self.crm.addContact(self.linkedIn.getDetails(x), self.who)
+
+# If we have a match then check it is still right
         for x in self.mapping.keys():
             self.crm.checkDetails(self.mapping[x], self.linkedIn.getCheckDetails(x), self.who)
 
-# for each person:
-# 1) load linked in contacts - this will be a subset of all of our contacts
-# 2) load crm contacts - this should be the whole list of our contacts
-# 3) go through the linked in contacts and see if we have a match in the CRM
-#   a) no match - add it
-#   b) match - check if the summary matches, if not update it
+
+#############################################
+# These are the keys to connect to LinkedIn #
+# and Insightly.                            #
+#############################################
 
 marks_keys={'CONSUMER_KEY' : '75157za92khx9s',
          'CONSUMER_SECRET' : 'nBI6vmsyGMZqAop6',
@@ -275,19 +413,21 @@ tims_keys= {'CONSUMER_KEY' : '753ofe2uqpagc0',
 
 INSIGHT_KEY='1b59c7a6-98cc-4788-b4ae-d063453e04ab'
 
-c=crm(INSIGHT_KEY)
+if __name__ == "__main__":
 
-print "Going through Mark's contacts..."
-i=linkedIn(marks_keys, "Mark")
-r=controller(c, i)
-r.run()
+    c=crm(INSIGHT_KEY)
 
-print "Going through John's contacts..."
-i=linkedIn(johns_keys, "John")
-r=controller(c, i)
-r.run()
+    print "Going through Mark's contacts..."
+    i=linkedIn(marks_keys, "Mark")
+    r=controller(c, i)
+    r.run()
 
-print "Going through Tim's contacts..."
-i=linkedIn(tims_keys, "Tim")
-r=controller(c, i)
-r.run()
+    print "Going through John's contacts..."
+    i=linkedIn(johns_keys, "John")
+    r=controller(c, i)
+    r.run()
+
+    print "Going through Tim's contacts..."
+    i=linkedIn(tims_keys, "Tim")
+    r=controller(c, i)
+    r.run()
