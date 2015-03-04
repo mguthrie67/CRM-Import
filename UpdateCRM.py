@@ -18,6 +18,7 @@ from insightly import Insightly
 
 import base64
 import urllib2
+import sys
 
 # Utility function to call the REST API for things that don't have a python API
 
@@ -79,12 +80,11 @@ class crm():
         c['TAGS'].append({"TAG_NAME" : "LIContact-%s" % who})
 
 # linkedIn URL
-        linkedinurl="https://www.linkedin.com/profile/view?%s" % dets['id']
 
         c["CONTACTINFOS"]=[{"SUBTYPE": "LinkedInPublicProfileUrl",
                             "TYPE": "SOCIAL",
-                            "DETAIL": linkedinurl,
-                            "LABEL": "LinkedInPublicProfileUrl"
+                            "DETAIL": dets['linkedInUrl'],
+                            "LABEL": "linkedInPublicProfileUrl"
                            }]
 
 # Add email address if we have one
@@ -114,7 +114,13 @@ class crm():
         c['LINKS'].append(l)
 
 # add contact record to crm
-        c=self.crm.addContact(c)
+        try:
+            c=self.crm.addContact(c)
+        except urllib2.HTTPError as e:
+            print "Error adding contact."
+            print e
+            print json.dumps(c)
+            sys.exit()
 
 # add to in memory list
         self.ins_contacts["%s %s" % (c['FIRST_NAME'],c['LAST_NAME'])] = c['CONTACT_ID']
@@ -302,6 +308,11 @@ class linkedIn():
         else:
             ret['summary']=ret['summary'] + "nothing\n"
 
+# Fix private entries in name fields
+        if ret['first-name']=="private":
+            ret['first-name']=name.split(" ")[0]
+            ret['last-name']=" ".join(name.split(" ")[1:])
+
 # update company and position if available
         if connection_details.has_key('positions'):
             if connection_details['positions'].has_key('values'):
@@ -323,6 +334,12 @@ class linkedIn():
 
         if connection_details.has_key('pictureUrl'):
             ret['pictureUrl']=connection_details['pictureUrl']
+
+# linkedIn URL
+        if connection_details.has_key('siteStandardProfileRequest'):
+            bit=connection_details['siteStandardProfileRequest']
+            if bit.has_key('url'):
+                ret['linkedInUrl']=bit['url'].split("&")[0]    # only need the id which is the first parameter
 
 # data is a bit crap so we try to clean it up before using it
         self.cleanUp(ret)
