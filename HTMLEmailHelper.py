@@ -92,6 +92,9 @@ table.google-plus:hover td { background: #CC0000; }
     def img1(self,url):
         return("""<img width="580" height="300" src="%s" """ % url)
 
+    def img2(self,url):
+        return("""<img width="250" src="%s" """ % url)
+
     def footer(self):
         return("</body>")
 

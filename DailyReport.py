@@ -5,6 +5,7 @@ from insightly import Insightly
 from HTMLEmailHelper import HTMLEmailHelper
 
 dev=True
+#dev=False
 
 to={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
 frm={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
@@ -27,7 +28,7 @@ class crmHelper():
          self.contacts=json.load(open("crmdump.txt"))
       else:
          self.contacts = self.crm.getContacts()
-#         json.dump(self.contacts, open("crmdump.txt", "w"))
+         json.dump(self.contacts, open("crmdump.txt", "w"))
 
 
 # map names to ids
@@ -70,6 +71,9 @@ h=HTMLEmailHelper(frm, to)
 # headings
 day=time.strftime("%A")
 message=h.header("Daily Report - " + day)
+message+="<br>"
+message+=h.img2("http://17ways.com.au/images/logo_slogan.png")
+message+="<br>"
 message+=h.h1("CRM Daily Report - " + day)
 message+="Overview of how we are tracking in our contact with customers."
 
@@ -112,12 +116,12 @@ message+=h.img1(url)
 message+=h.h2("Breakdown of Tags")
 message+=h.i("Numbers of people by tag type.")
 
-message+="<table>"
+message+="<table class='button' border=1>"
 
 tab={}
 
 for x in c.getAllTags():
-   if x.find("Location")<>0:   # ignore the locations
+   if x.find("Location")<>0 and x.find("LIContact")<>0:   # ignore the locations
       tab[x]=len(c.getTag(x))   # get how many have this tag
 
 tabsort=sorted(tab.items(), key=lambda x: x[1])
