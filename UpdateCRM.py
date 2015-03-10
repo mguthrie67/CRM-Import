@@ -295,11 +295,11 @@ class linkedIn():
         ret['first-name']=connection_details['firstName']
         ret['last-name']=connection_details['lastName']
         ret['company']='Unknown'
-        ret['title']=None
+        ret['title']=''
         ret['location-area']=None
         ret['location-country']=None
         ret['pictureUrl']=None
-        ret['linkedInUrl']=None
+        ret['linkedInUrl']=''
         ret['email']=None
 
         ret['summary']="Linked in says..."
@@ -436,6 +436,11 @@ if __name__ == "__main__":
 
     c=crm(INSIGHT_KEY)
 
+    print "Going through Tim's contacts..."
+    i=linkedIn(tims_keys, "Tim")
+    r=controller(c, i)
+    r.run()
+
     print "Going through Mark's contacts..."
     i=linkedIn(marks_keys, "Mark")
     r=controller(c, i)
@@ -443,10 +448,5 @@ if __name__ == "__main__":
 
     print "Going through John's contacts..."
     i=linkedIn(johns_keys, "John")
-    r=controller(c, i)
-    r.run()
-
-    print "Going through Tim's contacts..."
-    i=linkedIn(tims_keys, "Tim")
     r=controller(c, i)
     r.run()
