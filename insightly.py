@@ -134,7 +134,7 @@ class Insightly():
         self.apikey = apikey
         self.baseurl = 'https://api.insight.ly'
         self.users = self.getUsers()
-        print 'CONNECTED: found ' + str(len(self.users)) + ' users'
+#        print 'CONNECTED: found ' + str(len(self.users)) + ' users'
         for u in self.users:
             if u.get('ACCOUNT_OWNER', False):
                 self.owner_email = u.get('EMAIL_ADDRESS','')
