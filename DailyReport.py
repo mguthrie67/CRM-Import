@@ -254,7 +254,11 @@ class crmHelper():
       return(data)
 
 ##############################################
-# Generate the report                        #
+#                                            #
+#                                            #
+#            Generate the report             #
+#                                            #
+#                                            #
 ##############################################
 class Report():
 
@@ -282,11 +286,51 @@ body {
 }
 
 h1 {
-	font-size: 400%%;
+	font-size: 300%%;
+    color:#5d73b6
 }
 
 h2 {
 	font-size: 140%%;
+}
+
+h4 {
+    color: #1F3D99;
+    font-style: italic;
+}
+
+
+table.nice {
+
+	color:#333333;
+	border-width: 1px;
+	border-color: #666666;
+	border-collapse: collapse;
+}
+table.nice th {
+	border-width: 1px;
+	padding: 8px;
+	border-style: solid;
+	border-color: #666666;
+	background-color: #dedede;
+}
+table.nice td {
+	border-width: 1px;
+	padding: 6px;
+	border-style: solid;
+	border-color: #666666;
+	background-color: #ffffff;
+}
+
+
+a {
+    text-decoration: none;
+}
+a:link, a:visited {
+    color: #091e5e;
+}
+a:hover {
+    color: #5d73f6;
 }
 </style>
 </head>
@@ -295,8 +339,8 @@ h2 {
 """ % (frm["name"], frm["email"], to["name"], to["email"], "Daily Report - " + day)
 
       self.message+="<table width=100%%><tr><td><img width=120px src=http://17ways.com.au/images/logo_slogan.png>"
-      self.message+="<td valign=middle><font size=96>CRM Daily Report - %s</font></tr></table><hr>" % day
-      self.message+="Overview of how we are tracking in our contact with customers."
+      self.message+="<td valign=middle><font size=96 color='#5d73b6'>CRM Daily Report - %s</font></tr></table><hr>" % day
+      self.message+="Overview of how we are tracking in our contact with customers. The report is only as good as the data, so sort yourselves out, you fuckers."
 
    def run(self):
 # This is the orchestrator function. Change this to change the order of the sections etc.
@@ -320,8 +364,85 @@ h2 {
       if details: self.message+=" in Detail"
       self.message+="</h2>"
 
-      self.message+="<i>Show what we have going on.</i><br>"
+      self.message+="<h4>Show what we have going on.</h4>"
       data=self.c.getOpportunities()
+
+# charts only for the detail part
+
+      if details:
+
+          titlist   =[]
+          chancelist=[]
+          amountlist=[]
+
+          for x in data:
+             titlist.append(x['name'])
+             chancelist.append(x['chance'])
+             amountlist.append(x['amount'])
+
+    # scale the numbers or the charts are fucked
+          topamt=max(amountlist)
+
+    # charts
+
+    # chart by total amount
+
+          self.message+="<h3>By Total Amount</h3>"
+
+          databit="chd=t:"
+          titbit="chdl="
+          for i in range(0,len(titlist)-1):
+             databit+=str(amountlist[i]/(topamt/100)) + ","
+             titbit+=titlist[i] + "|"
+
+    # strip last comma or bar
+          databit=databit[:-1]
+          titbit=titbit[:-1]
+
+    # replace spaces
+          titbit=titbit.replace(" ","%20")
+
+          url="https://chart.googleapis.com/chart?cht=p3&chs=580x300&chco=FFC6A5|FFFF42|DEF3BD|00A5C6|DEBDDE&" + databit + "&" + titbit
+
+          self.message+="<img height=300 width=580 src='%s'>" % url
+
+    # chart by total ratio
+
+          self.message+="<h3>By Relative Value</h3>"
+
+          databit="chd=t:"
+          titbit="chdl="
+          for i in range(0,len(titlist)-1):
+             databit+=str(amountlist[i]/(topamt/100) * chancelist[i]) + ","
+             titbit+=titlist[i] + "|"
+
+    # strip last comma or bar
+          databit=databit[:-1]
+          titbit=titbit[:-1]
+
+    # replace spaces
+          titbit=titbit.replace(" ","%20")
+
+          url="https://chart.googleapis.com/chart?cht=p3&chs=580x300&chco=FFC6A5|FFFF42|DEF3BD|00A5C6|DEBDDE&" + databit + "&" + titbit
+
+          self.message+="<img height=300 width=580 src='%s'>" % url
+
+   # print out tables with summary
+
+      if details:
+          self.message+= "<table class='nice' border=1><tr><th>Opportunity<th>Potential Profit<th>Probability<th>Ratio</tr>"
+          for x in data:
+             try:
+                num="{:,}".format(int(x['amount']))
+                ratio = "{:,}".format(x['amount'] / 100 / x['chance'])
+             except:
+                num="Unknown"
+                ratio = "Huge"
+             self.message+="<tr><td>%s<td>$%s<td>%s<td>%s</tr>" % (x['name'],num,x['chance'],ratio)
+
+          self.message+="</table>"
+
+
       for x in data:
          if details:
             self.message+="<h3><a href=https://y31b3txz.insight.ly/opportunities/details/%s>%s</a> - Owner: %s</h3>" % (x['id'],x['name'],x['owner'])
@@ -362,7 +483,7 @@ h2 {
 
       # compare LinkedIn to other data
       self.message+="<hr><h2>LinkedIn vs Directly Entered</h2>"
-      self.message+="<i>Where are our contacts coming from?</i>"
+      self.message+="<h4>Where are our contacts coming from?</h4>"
 
       lin=len( list(set(mark) | set(tim) | set(john)) )
 
@@ -372,14 +493,14 @@ h2 {
       self.message+="<img height=300 width=580 src='%s'>" % url
 
    def detailsbreak(self):
-      self.message+="<hr><hr><h1>Details Below</h1><hr>"
+      self.message+="<hr><hr><h1>Details Below...</h1><img src='http://17ways.com.au/english_gent.jpg'><h1>Read on old chap, read on....</h1><hr>"
       
 
    def byTag(self):
 # breakdown by tags
 
       self.message+="<hr><h2>Breakdown of Tags on Contacts</h2>"
-      self.message+="<i>Numbers of people by tag type.</i><br><br>"
+      self.message+="<h4>Numbers of people by tag type.</h4>"
 
       tab={}
 
@@ -407,7 +528,9 @@ h2 {
 
       self.message+="<img height=300 width=580 src='%s'>" % url
 
-      self.message+="<br><br><table border=1>"
+      self.message+="<br><br><table  class='nice' border=1>"
+      self.message+="<tr><th>Tag Name<th>Number of Entries</tr>"
+
 
       for x in tabsort:
          self.message+="<tr><td><a href='https://y31b3txz.insight.ly/contacts/tags/?t=%s'>%s</a><td>%s</tr>" % (x[0], x[0], x[1])
@@ -418,7 +541,7 @@ h2 {
 # breakdown by tags
 
          self.message+="<hr><h2>Breakdown of Tags on Organisations</h2>"
-         self.message+="<i>Numbers of organisations by tag type.</i><br><br>"
+         self.message+="<h4>Numbers of organisations by tag type.</h4>"
 
          tab={}
 
@@ -445,7 +568,9 @@ h2 {
 
          self.message+="<img height=300 width=580 src='%s'>" % url
 
-         self.message+="<br><br><table border=1>"
+         self.message+="<br><br><table  class='nice' border=1>"
+
+         self.message+="<tr><th>Tag Name<th>Number of Matches</tr>"
 
          for x in tabsort:
             self.message+="<tr><td><a href='https://y31b3txz.insight.ly/contacts/tags/?t=%s'>%s</a><td>%s</tr>" % (x[0], x[0], x[1])
@@ -455,7 +580,7 @@ h2 {
    def activeCompanies(self):
 # list companies marked as active
       self.message+="<hr><h2>Active Companies</h2>"
-      self.message+="<i>These are the companies we are actively pursing opportunities with.</i><br><br>"
+      self.message+="<h4>These are the companies we are actively pursing opportunities with.</h4>"
 
       list=self.c.getCompanieswithTag("Company-Active")
 
@@ -466,7 +591,7 @@ h2 {
    def activeContacts(self):
 # list contacts marked as active
       self.message+="<hr><h2>Active Contacts</h2>"
-      self.message+="<i>These are the contacts we are actively pursing opportunities with.</i><br><br>"
+      self.message+="<h4>These are the contacts we are actively pursing opportunities with.</h4>"
 
       list=self.c.getContactswithTag("Type-Active")
 
@@ -484,7 +609,7 @@ h2 {
             countries[code]=where
 
          self.message+="<hr><h2>Breakdown by Location</h2>"
-         self.message+="<i>Numbers of people by where they are based.</i>"
+         self.message+="<h4>Numbers of people by where they are based.</h4>"
 
          tab={}
 
@@ -512,7 +637,8 @@ h2 {
          url="https://chart.googleapis.com/chart?cht=bvg&chs=580x300&chco=00000,FF0000|00FF00|0000FF&" + part
          self.message+="<br><br><img height=300 width=580 src='%s'>" % url
 
-         self.message+="<br><br><table border=1>"
+         self.message+="<br><br><table  class='nice' border=1>"
+         self.message+="<tr><th>Country<th>Number of Contacts</tr>"
 
          for x in tabsort:
             code=x[0].replace("Location-","")
@@ -532,10 +658,10 @@ h2 {
 
       if len(newbies)>0:
          self.message+="<hr><h2>New Contacts</h2>"
-         self.message+="<i>New contacts added in the last 24 hours.</i><br>"
+         self.message+="<h4>New contacts added in the last 24 hours.</h4>"
 
          for x in newbies:
-            self.message+="<br><a href='https://y31b3txz.insight.ly/Contacts/Details/%s'>%s</a>" % (x, self.c.idlist[x])
+            self.message+="<a href='https://y31b3txz.insight.ly/Contacts/Details/%s'>%s</a><br>" % (x, self.c.idlist[x])
 
    def newCompanies(self):
 # New companies
@@ -543,17 +669,17 @@ h2 {
 
       if len(newbies)>0:
          self.message+="<hr><h2>New Organisations</h2>"
-         self.message+="<i>New companies added in the last 24 hours.</i><br>"
+         self.message+="<h4>New companies added in the last 24 hours.</h4>"
 
          for x in newbies:
-            self.message+="<br><a href='https://y31b3txz.insight.ly/organisations/Details/%s'>%s</a>" % (x, self.c.complist[x])
+            self.message+="<a href='https://y31b3txz.insight.ly/organisations/Details/%s'>%s</a>" % (x, self.c.complist[x])
 
 
    def checkNotes(self):
       # Tagged people with no contact
       # format of list is Tag-name : [days to check, "Title for message"
-         imp={"Type-DM" : [30, "Decision Makers"],   \
-              "Type-Active" : [30, "Active"]}
+         imp={"Type-DM" : [30, "Decision Makers", "People we consider important and who could open doors for us."],   \
+              "Type-Active" : [30, "Active", "People we are actively pursuing something with."]}
 
          for x in imp.keys():
             data=self.c.getTagwithNoContact(x, imp[x][0])
@@ -561,8 +687,9 @@ h2 {
                self.message+="<hr><h2>%s - All Uptodate!</h2>" % imp[x][1]
             else:
                self.message+="<hr><h2>%s - Overdue Contact</h2>" % imp[x][1]
+               self.message+="<h4>%s</h4>" % imp[x][2]
                for y in data:
-                  self.message+="%s" % self.c.idlist[y[0]]
+                  self.message+="<a href='https://y31b3txz.insight.ly/Contacts/Details/%s'>%s</a>" % (y[0], self.c.idlist[y[0]])
                   if y[1]==None:
                      self.message+=" - no contact ever.<br>"
                   else:
@@ -570,7 +697,7 @@ h2 {
 
    def recentNotes(self):
       self.message+="<hr><h2>New Notes</h2>"
-      self.message+="<i>New notes added in the last 24 hours.</i><br>"
+      self.message+="<h4>New notes added in the last 24 hours.</h4>"
       data=self.c.getNewNotes()
       for x in data:
          self.message+="<h3>%s with %s: %s</h3>%s" % (x[0], x[1], x[2], x[3])
