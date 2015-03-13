@@ -15,7 +15,8 @@ class crmHelper():
 
    def __init__(self):
 # link to the crm
-      self.crm = Insightly(apikey="1b59c7a6-98cc-4788-b4ae-d063453e04ab")
+      if not dev:
+         self.crm = Insightly(apikey="1b59c7a6-98cc-4788-b4ae-d063453e04ab")
       self.taglist={}
       self.idlist={}
       self.complist={}
@@ -26,6 +27,7 @@ class crmHelper():
       self.loadNotes()
       self.loadCompanies()
       self.loadUsers()
+      self.loadOpportunities()
 
    def loadContacts(self):
 # get contacts
@@ -134,6 +136,34 @@ class crmHelper():
       else:
          print "Tag %s not found." % tag
          return([])
+
+   def loadOpportunities(self):
+      if dev:
+# load from file for testing
+         self.opportunities=json.load(open("crmoppsdump.txt"))
+      else:
+         self.opportunities = self.crm.getOpportunities()
+         json.dump(self.opportunities, open("crmoppsdump.txt", "w"))
+
+   def getOpportunities(self):
+      ret=[]
+      for x in self.opportunities:
+         id=x['OPPORTUNITY_ID']
+         name=x['OPPORTUNITY_NAME']
+         amount=x['BID_AMOUNT']
+         chance=x['PROBABILITY']
+         owner=x['OWNER_USER_ID']
+         details=x['OPPORTUNITY_DETAILS']
+         ret.append({'id': id, 'name' : name, 'details' : details, 'amount' : amount, 'chance' : chance, 'owner' : self.username[owner]})
+      return(ret)
+
+   def getTag(self, tag):
+      if self.taglist.has_key(tag):
+         return(self.taglist[tag])
+      else:
+         print "Tag %s not found." % tag
+         return([])
+      
 
    def getCompanyTag(self, tag):
       if self.comptaglist.has_key(tag):
@@ -274,13 +304,37 @@ h2 {
       self.newCompanies()
       self.recentNotes()
       self.checkNotes()
+      self.Opportunities()
       self.activeCompanies()
       self.activeContacts()
+      self.detailsbreak()
       self.linkedInbyPerson()
+      self.Opportunities(details=True)
       self.byTag()
       self.byCompanyTag()
       self.byLocation()
       self.finish()
+
+   def Opportunities(self, details=None):
+      self.message+="<hr><h2>Opportunities"
+      if details: self.message+=" in Detail"
+      self.message+="</h2>"
+
+      self.message+="<i>Show what we have going on.</i><br>"
+      data=self.c.getOpportunities()
+      for x in data:
+         if details:
+            self.message+="<h3><a href=https://y31b3txz.insight.ly/opportunities/details/%s>%s</a> - Owner: %s</h3>" % (x['id'],x['name'],x['owner'])
+            try:
+               num="{:,}".format(int(x['amount']))
+            except:
+               num="Unknown"
+            self.message+="<b>Value:</b>$%s<br>" % num
+            self.message+="<b>Chance:</b>%s%%<br><br>" % x['chance']
+            self.message+=x['details']
+         else:
+            self.message+="<br><a href=https://y31b3txz.insight.ly/opportunities/details/%s>%s</a> - Owner: %s" % (x['id'],x['name'],x['owner'])
+
 
    def linkedInbyPerson(self):
       self.message+="<hr><h2>LinkedIn Data in the CRM</h2>"
@@ -317,44 +371,48 @@ h2 {
 
       self.message+="<img height=300 width=580 src='%s'>" % url
 
+   def detailsbreak(self):
+      self.message+="<hr><hr><h1>Details Below</h1><hr>"
+      
+
    def byTag(self):
 # breakdown by tags
 
-         self.message+="<hr><h2>Breakdown of Tags on Contacts</h2>"
-         self.message+="<i>Numbers of people by tag type.</i><br><br>"
+      self.message+="<hr><h2>Breakdown of Tags on Contacts</h2>"
+      self.message+="<i>Numbers of people by tag type.</i><br><br>"
 
-         tab={}
+      tab={}
 
-         for x in self.c.getAllTags():
-            if x.find("Location")<>0 and x.find("LIContact")<>0:   # ignore the locations and contacts
-               tab[x]=len(self.c.getTag(x))   # get how many have this tag
+      for x in self.c.getAllTags():
+         if x.find("Location")<>0 and x.find("LIContact")<>0:   # ignore the locations and contacts
+            tab[x]=len(self.c.getTag(x))   # get how many have this tag
 
-         tabsort=sorted(tab.items(), key=lambda x: x[1])
+      tabsort=sorted(tab.items(), key=lambda x: x[1])
 
-         tabsort.reverse()
+      tabsort.reverse()
 
 # create the url for the chart
-         part="chd=t:"
-         for x in tabsort:
-            part+="%s," % x[1]
-         part=part[:-1]
-         part+="&chdl="
-         for x in tabsort:
-            part+="%s," % x[0]
-         part=part[:-1]
+      part="chd=t:"
+      for x in tabsort:
+         part+="%s," % x[1]
+      part=part[:-1]
+      part+="&chdl="
+      for x in tabsort:
+         part+="%s," % x[0]
+      part=part[:-1]
 
-         part=part.replace(" ","%20")
+      part=part.replace(" ","%20")
 
-         url="https://chart.googleapis.com/chart?cht=p3&chs=580x300&" + part
+      url="https://chart.googleapis.com/chart?cht=p3&chs=580x300&" + part
 
-         self.message+="<img height=300 width=580 src='%s'>" % url
+      self.message+="<img height=300 width=580 src='%s'>" % url
 
-         self.message+="<br><br><table border=1>"
+      self.message+="<br><br><table border=1>"
 
-         for x in tabsort:
-            self.message+="<tr><td><a href='https://y31b3txz.insight.ly/contacts/tags/?t=%s'>%s</a><td>%s</tr>" % (x[0], x[0], x[1])
+      for x in tabsort:
+         self.message+="<tr><td><a href='https://y31b3txz.insight.ly/contacts/tags/?t=%s'>%s</a><td>%s</tr>" % (x[0], x[0], x[1])
 
-         self.message+="</table>"
+      self.message+="</table>"
 
    def byCompanyTag(self):
 # breakdown by tags
