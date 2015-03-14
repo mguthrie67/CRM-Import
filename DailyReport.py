@@ -3,6 +3,7 @@
 import smtplib, time, json
 from insightly import Insightly
 import datetime
+import locale
 
 dev=True
 #dev=False
@@ -25,6 +26,7 @@ class crmHelper():
       self.notesbyidlist={}         # maps note ids to time of contact
       self.loadContacts()
       self.loadNotes()
+      self.loadTasks()
       self.loadCompanies()
       self.loadUsers()
       self.loadOpportunities()
@@ -54,6 +56,15 @@ class crmHelper():
                else:
                   self.taglist[thistag]=[]
                   self.taglist[thistag].append(x["CONTACT_ID"])
+
+   def loadTasks(self):
+      if dev:
+# load from file for testing
+         self.tasks=json.load(open("crmtaskdump.txt"))
+      else:
+         self.tasks = self.crm.getTasks()
+         json.dump(self.tasks, open("crmtaskdump.txt", "w"))
+
 
    def loadNotes(self):
 # get all notes
@@ -137,6 +148,21 @@ class crmHelper():
          print "Tag %s not found." % tag
          return([])
 
+   def getEmpbyCompany(self):
+      ret={}
+      for x in self.contacts:
+         comp=x['DEFAULT_LINKED_ORGANISATION']
+         if comp<>None:
+            if ret.has_key(comp):
+               ret[comp]=ret[comp]+1
+            else:
+               ret[comp]=1
+
+      tabsort=sorted(ret.items(), key=lambda x: x[1])
+      tabsort.reverse()
+
+      return(tabsort)
+
    def loadOpportunities(self):
       if dev:
 # load from file for testing
@@ -163,7 +189,32 @@ class crmHelper():
       else:
          print "Tag %s not found." % tag
          return([])
-      
+
+   def getTasks(self):
+      ret=[]
+      for x in self.tasks:
+         id=x['TASK_ID']
+         title=x['Title']
+         d=x['DUE_DATE']
+         t=datetime.datetime.strptime(d, "%Y-%m-%d %H:%M:%S")
+
+         due=t.strftime('%d %b %Y')
+
+# check if overdue
+         now=datetime.datetime.now()
+         if now>t:
+            overdue=True
+         else:
+            overdue=False
+
+         completed=x['COMPLETED']
+         details=x['DETAILS']
+         status=x['STATUS']
+         who=self.username[x['RESPONSIBLE_USER_ID']]
+
+         if not completed:
+            ret.append({'id': id, 'overdue': overdue, 'title': title, 'due': due, 'completed': completed, 'details': details, 'status': status, 'who': who})
+      return(ret)
 
    def getCompanyTag(self, tag):
       if self.comptaglist.has_key(tag):
@@ -351,11 +402,13 @@ a:hover {
       self.Opportunities()
       self.activeCompanies()
       self.activeContacts()
+      self.openTasks()
       self.detailsbreak()
       self.linkedInbyPerson()
       self.Opportunities(details=True)
       self.byTag()
       self.byCompanyTag()
+      self.byCompanyBreakdown()
       self.byLocation()
       self.finish()
 
@@ -430,11 +483,14 @@ a:hover {
    # print out tables with summary
 
       if details:
+# use locale to add commas to numbers, python 2.6 doesn't have format
+          locale.setlocale(locale.LC_ALL, 'en_US')
+
           self.message+= "<table class='nice' border=1><tr><th>Opportunity<th>Potential Profit<th>Probability<th>Ratio</tr>"
           for x in data:
              try:
-                num="{:,}".format(int(x['amount']))
-                ratio = "{:,}".format(x['amount'] / 100 / x['chance'])
+                num=locale.format("%d", int(x['amount']), grouping=True)
+                ratio=locale.format("%d", int(x['amount'] / 100 / x['chance']), grouping=True)
              except:
                 num="Unknown"
                 ratio = "Huge"
@@ -454,7 +510,24 @@ a:hover {
             self.message+="<b>Chance:</b>%s%%<br><br>" % x['chance']
             self.message+=x['details']
          else:
-            self.message+="<br><a href=https://y31b3txz.insight.ly/opportunities/details/%s>%s</a> - Owner: %s" % (x['id'],x['name'],x['owner'])
+            self.message+="<a href=https://y31b3txz.insight.ly/opportunities/details/%s>%s</a> - Owner: %s<br>" % (x['id'],x['name'],x['owner'])
+
+   def openTasks(self):
+      self.message+="<hr><h2>Open Tasks</h2>"
+
+      self.message+="<i>Tasks we have allocated to ourselves to do.</i>"
+
+      data=self.c.getTasks()
+      if len(data)>0:
+          self.message+="<table class='nice' border=1>"
+          self.message+="<tr><th>What<th>Who<th>When<th>Status</tr>"
+          for x in data:
+             if x['overdue']:
+                x['due']="<td style='color:red; font-weight: bold;'>%s" % x['due']
+             else:
+                x['due']="<td>%s" % x['due']
+             self.message+="<tr><td><a href='https://y31b3txz.insight.ly/Tasks/TaskDetails/%s' title='%s'>%s</a><td>%s%s<td>%s</th>" % (x['id'],x['details'],x['title'],x['who'],x['due'],x['status'])
+          self.message+="</table>"
 
 
    def linkedInbyPerson(self):
@@ -609,7 +682,7 @@ a:hover {
             countries[code]=where
 
          self.message+="<hr><h2>Breakdown by Location</h2>"
-         self.message+="<h4>Numbers of people by where they are based.</h4>"
+         self.message+="<h4>Numbers of people by where they are based. Graph excludes Australia.</h4>"
 
          tab={}
 
@@ -623,7 +696,7 @@ a:hover {
 
          # create the url for the chart
          part="chd=t:"
-         for x in tabsort[:8]:
+         for x in tabsort[1:]:
             part+="%s," % x[1]
          part=part[:-1]
          part+="&chdl="
@@ -634,7 +707,7 @@ a:hover {
 
          part=part.replace(" ","%20")
 
-         url="https://chart.googleapis.com/chart?cht=bvg&chs=580x300&chco=00000,FF0000|00FF00|0000FF&" + part
+         url="https://chart.googleapis.com/chart?cht=bvg&chs=580x300&chco=000000|FF0000|00FF00|0000FF&" + part
          self.message+="<br><br><img height=300 width=580 src='%s'>" % url
 
          self.message+="<br><br><table  class='nice' border=1>"
@@ -701,6 +774,18 @@ a:hover {
       data=self.c.getNewNotes()
       for x in data:
          self.message+="<h3>%s with %s: %s</h3>%s" % (x[0], x[1], x[2], x[3])
+
+   def byCompanyBreakdown(self):
+      self.message+="<hr><h2>Breakdown by Company</h2>"
+      self.message+="<h4>Shows where our contacts work.</h4>"
+      data=self.c.getEmpbyCompany()
+      self.message+="<table class='nice' border=1>"
+      self.message+="<tr><th>Company<th>Number of Contacts</tr>"
+
+      for x in data:
+         self.message+="<tr><td>%s<td>%s</tr>" % (self.c.complist[x[0]], x[1])
+
+      self.message+="</table>"
 
    def finish(self):
 # Footer for the email
