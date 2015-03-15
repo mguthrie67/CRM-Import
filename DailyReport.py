@@ -4,15 +4,24 @@ import smtplib, time, json
 from insightly import Insightly
 import datetime
 import locale
+import sys
 
+
+# for development we use local data. Set dev to False to run in production or if you want to
+# download a new version of the real data. Unless you have an smtp server running, setting
+# dev to False will generate an error when it tries to email the results.
 dev=True
 #dev=False
 
 to={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
 frm={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
 
+
+
 class crmHelper():
    global dev
+
+   global TIMEAMOUNT
 
    def __init__(self):
 # link to the crm
@@ -96,7 +105,7 @@ class crmHelper():
          time_added=datetime.datetime.strptime(x['DATE_UPDATED_UTC'], "%Y-%m-%d %H:%M:%S")   # update time
          now=datetime.datetime.utcnow()
          elapsed = now - time_added
-         if (elapsed.days * 60*60*24) + elapsed.seconds < 60*60*25:
+         if (elapsed.days * 60*60*24) + elapsed.seconds < TIMEAMOUNT:
             self.notesbyidlist[x['NOTE_ID']]=(elapsed.days * 60*60*24) + elapsed.seconds
          
 
@@ -235,7 +244,7 @@ class crmHelper():
          time_added=datetime.datetime.strptime(x['DATE_CREATED_UTC'], "%Y-%m-%d %H:%M:%S")
          now=datetime.datetime.utcnow()
          elapsed = now - time_added
-         if (elapsed.days * 60*60*24) + elapsed.seconds < 60*60*25:
+         if (elapsed.days * 60*60*24) + elapsed.seconds < TIMEAMOUNT:
             newc.append(x['CONTACT_ID'])
       return(newc)
 
@@ -257,7 +266,7 @@ class crmHelper():
          time_added=datetime.datetime.strptime(x['DATE_CREATED_UTC'], "%Y-%m-%d %H:%M:%S")
          now=datetime.datetime.utcnow()
          elapsed = now - time_added
-         if (elapsed.days * 60*60*24) + elapsed.seconds < 60*60*25:
+         if (elapsed.days * 60*60*24) + elapsed.seconds < TIMEAMOUNT:
             newc.append(x['ORGANISATION_ID'])
       return(newc)
 
@@ -313,6 +322,8 @@ class crmHelper():
 ##############################################
 class Report():
 
+   global TIMEWORDS, TIMEAMOUNT
+
    global frm, to
 
    def __init__(self, c):
@@ -357,6 +368,7 @@ table.nice {
 	border-width: 1px;
 	border-color: #666666;
 	border-collapse: collapse;
+    line-height: 6px;
 }
 table.nice th {
 	border-width: 1px;
@@ -364,6 +376,7 @@ table.nice th {
 	border-style: solid;
 	border-color: #666666;
 	background-color: #dedede;
+    line-height: 8px;
 }
 table.nice td {
 	border-width: 1px;
@@ -371,6 +384,7 @@ table.nice td {
 	border-style: solid;
 	border-color: #666666;
 	background-color: #ffffff;
+	text-align: right;
 }
 
 
@@ -494,7 +508,7 @@ a:hover {
              except:
                 num="Unknown"
                 ratio = "Huge"
-             self.message+="<tr><td>%s<td>$%s<td>%s<td>%s</tr>" % (x['name'],num,x['chance'],ratio)
+             self.message+="<tr><td style='text-align: left;'>%s<td>$%s<td>%s<td>%s</tr>" % (x['name'],num,x['chance'],ratio)
 
           self.message+="</table>"
 
@@ -694,13 +708,23 @@ a:hover {
 
          tabsort.reverse()
 
-         # create the url for the chart
+         # create the url for the chart - bar chart ex. Aus.
+
+         # take a copy of the data and summarise it a bit
+         tabsortchart=tabsort[1:8]   # first few minus Australia
+         therest=tabsort[9:]
+         others=0
+         for i in therest:
+            others+=i[1]
+         tabsortchart.append(['Others',others])
+
+
          part="chd=t:"
-         for x in tabsort[1:]:
+         for x in tabsortchart[1:]:
             part+="%s," % x[1]
          part=part[:-1]
          part+="&chdl="
-         for x in tabsort[:8]:
+         for x in tabsortchart[:8]:
             lo=x[0].replace("Location-","")
             part+="%s|" % lo
          part=part[:-1]
@@ -709,6 +733,33 @@ a:hover {
 
          url="https://chart.googleapis.com/chart?cht=bvg&chs=580x300&chco=000000|FF0000|00FF00|0000FF&" + part
          self.message+="<br><br><img height=300 width=580 src='%s'>" % url
+
+          # create the url for the chart - Aus vs Rest of World. Cricket.
+
+          # take a copy of the data and summarise it a bit
+          # google charts are shit, so scale the numbers down
+         high=tabsort[0][1]   # count in Oz
+         scale=10 ** (len(str(high)) -2)   # reduce it to less than 100 or the graphs are fucked
+
+         others=0
+         for i in tabsort[1:]:
+            others+=i[1]
+         tabsortchart=[tabsort[0]]
+         tabsortchart.append(['Rest of World',others])
+
+         part="chd=t:"
+         for x in tabsortchart:
+            part+="%s," % (int(x[1]) / scale)
+         part=part[:-1]
+         part+="&chdl="
+         for x in tabsortchart[:8]:
+            lo=x[0].replace("Location-","")
+            part+="%s|" % lo
+         part=part[:-1]
+         part=part.replace(" ","%20")
+
+         url="https://chart.googleapis.com/chart?cht=p3&chs=400x400&chco=FF0000|0000FF&" + part
+         self.message+="<br><br><img height=400 width=400 src='%s'>" % url
 
          self.message+="<br><br><table  class='nice' border=1>"
          self.message+="<tr><th>Country<th>Number of Contacts</tr>"
@@ -731,7 +782,7 @@ a:hover {
 
       if len(newbies)>0:
          self.message+="<hr><h2>New Contacts</h2>"
-         self.message+="<h4>New contacts added in the last 24 hours.</h4>"
+         self.message+="<h4>New contacts added %s.</h4>" % TIMEWORDS
 
          for x in newbies:
             self.message+="<a href='https://y31b3txz.insight.ly/Contacts/Details/%s'>%s</a><br>" % (x, self.c.idlist[x])
@@ -742,17 +793,17 @@ a:hover {
 
       if len(newbies)>0:
          self.message+="<hr><h2>New Organisations</h2>"
-         self.message+="<h4>New companies added in the last 24 hours.</h4>"
+         self.message+="<h4>New companies added %s.</h4>" % TIMEWORDS
 
          for x in newbies:
-            self.message+="<a href='https://y31b3txz.insight.ly/organisations/Details/%s'>%s</a>" % (x, self.c.complist[x])
+            self.message+="<a href='https://y31b3txz.insight.ly/organisations/Details/%s'>%s</a><br>" % (x, self.c.complist[x])
 
 
    def checkNotes(self):
       # Tagged people with no contact
       # format of list is Tag-name : [days to check, "Title for message"
-         imp={"Type-DM" : [30, "Decision Makers", "People we consider important and who could open doors for us."],   \
-              "Type-Active" : [30, "Active", "People we are actively pursuing something with."]}
+         imp={"Type-DM" : [30, "Decision Makers", "People we consider important and who could open doors for us. So why aren't we calling them?"],   \
+              "Type-Active" : [30, "Active", "People we are actively pursuing something with, but can't be arsed to talk to. Or maybe we don't love the CRM and just haven't been updating it. Well let me tell you, you need to love the CRM."]}
 
          for x in imp.keys():
             data=self.c.getTagwithNoContact(x, imp[x][0])
@@ -770,7 +821,7 @@ a:hover {
 
    def recentNotes(self):
       self.message+="<hr><h2>New Notes</h2>"
-      self.message+="<h4>New notes added in the last 24 hours.</h4>"
+      self.message+="<h4>New notes added %s.</h4>" % TIMEWORDS
       data=self.c.getNewNotes()
       for x in data:
          self.message+="<h3>%s with %s: %s</h3>%s" % (x[0], x[1], x[2], x[3])
@@ -783,13 +834,15 @@ a:hover {
       self.message+="<tr><th>Company<th>Number of Contacts</tr>"
 
       for x in data:
-         self.message+="<tr><td>%s<td>%s</tr>" % (self.c.complist[x[0]], x[1])
+         self.message+="<tr><td style='text-align: left;'>%s<td>%s</tr>" % (self.c.complist[x[0]], x[1])
 
       self.message+="</table>"
 
    def finish(self):
 # Footer for the email
       self.message+="</body></html>"
+
+      self.message=self.message.encode('ascii', 'ignore').decode('ascii')
 
       if dev:
          f=open("temp.html", "w")
@@ -799,7 +852,19 @@ a:hover {
       else:
          
          smtpObj = smtplib.SMTP('localhost')
-         smtpObj.sendmail(frm['email'], [to['email']], self.message)         
+         smtpObj.sendmail(frm['email'], [to['email']], self.message)
+
+# don't check these, because I can't be bothered.
+
+# Call with words to put in the description and number of seconds to check backwards for.
+
+if len(sys.argv)>1:
+   TIMEWORDS=sys.argv[1]
+   TIMEAMOUNT=int(sys.argv[2])
+else:
+   TIMEWORDS=" in the last 24 hours"
+   TIMEAMOUNT=60 * 60 * 25
+
 
 # load the helper class for CRM
 c=crmHelper()
