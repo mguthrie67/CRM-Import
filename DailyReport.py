@@ -13,8 +13,14 @@ import sys
 dev=True
 #dev=False
 
+# Test settings
 to={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
 frm={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
+
+# Prod settings
+#to={"name" : "Reports", "email" : "reports@17ways.com.au"}
+#frm={"name" : "Daily CRM Report", "email" : "reports@17ways.com.au"}
+
 
 
 
