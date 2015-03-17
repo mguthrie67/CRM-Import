@@ -504,7 +504,7 @@ a:hover {
 
       if details:
 # use locale to add commas to numbers, python 2.6 doesn't have format
-          locale.setlocale(locale.LC_ALL, 'en_US')
+          locale.setlocale(locale.LC_ALL, '')
 
           self.message+= "<table class='nice' border=1><tr><th>Opportunity<th>Potential Profit<th>Probability<th>Ratio</tr>"
           for x in data:
@@ -523,7 +523,7 @@ a:hover {
          if details:
             self.message+="<h3><a href=https://y31b3txz.insight.ly/opportunities/details/%s>%s</a> - Owner: %s</h3>" % (x['id'],x['name'],x['owner'])
             try:
-               num="{:,}".format(int(x['amount']))
+                num=locale.format("%d", int(x['amount']), grouping=True)
             except:
                num="Unknown"
             self.message+="<b>Value:</b>$%s<br>" % num
