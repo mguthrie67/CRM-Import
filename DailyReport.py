@@ -11,15 +11,15 @@ import sys
 # download a new version of the real data. Unless you have an smtp server running, setting
 # dev to False will generate an error when it tries to email the results.
 dev=True
-#dev=False
+dev=False
 
 # Test settings
 to={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
 frm={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
 
 # Prod settings
-#to={"name" : "Reports", "email" : "reports@17ways.com.au"}
-#frm={"name" : "Daily CRM Report", "email" : "reports@17ways.com.au"}
+to={"name" : "Reports", "email" : "reports@17ways.com.au"}
+frm={"name" : "Daily CRM Report", "email" : "reports@17ways.com.au"}
 
 
 
@@ -193,8 +193,14 @@ class crmHelper():
          name=x['OPPORTUNITY_NAME']
          amount=x['BID_AMOUNT']
          chance=x['PROBABILITY']
+
          owner=x['OWNER_USER_ID']
          details=x['OPPORTUNITY_DETAILS']
+
+         if amount==None: amount=0
+         if chance==None: chance=0
+         if details==None: details=""
+
          ret.append({'id': id, 'name' : name, 'details' : details, 'amount' : amount, 'chance' : chance, 'owner' : self.username[owner]})
       return(ret)
 
@@ -504,7 +510,7 @@ a:hover {
 
       if details:
 # use locale to add commas to numbers, python 2.6 doesn't have format
-          locale.setlocale(locale.LC_ALL, 'en_US')
+          locale.setlocale(locale.LC_ALL, '')
 
           self.message+= "<table class='nice' border=1><tr><th>Opportunity<th>Potential Profit<th>Probability<th>Ratio</tr>"
           for x in data:
@@ -523,7 +529,7 @@ a:hover {
          if details:
             self.message+="<h3><a href=https://y31b3txz.insight.ly/opportunities/details/%s>%s</a> - Owner: %s</h3>" % (x['id'],x['name'],x['owner'])
             try:
-               num="{:,}".format(int(x['amount']))
+                num=locale.format("%d", int(x['amount']), grouping=True)
             except:
                num="Unknown"
             self.message+="<b>Value:</b>$%s<br>" % num
