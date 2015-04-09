@@ -159,11 +159,25 @@ class crm():
 # get the record
         c=self.crm.getContact(id)
 
-# add email
-        c["CONTACTINFOS"].append({"TYPE": "EMAIL","DETAIL": email,"LABEL": label})
+# see if it is there already
+        notFound=True
 
-# save
-        self.crm.addContact(c)
+        for conts in c["CONTACTINFOS"]:
+            if conts['LABEL']==label and conts['TYPE']=="EMAIL":
+                if conts.has_key('DETAIL'):
+                    if conts['DETAIL']==email:
+                       print "Already present. Not adding email address."
+                       notFound=False
+                       break
+
+# if we didn't find it then ok to add it
+        if notFound:
+
+    # add email
+            c["CONTACTINFOS"].append({"TYPE": "EMAIL","DETAIL": email,"LABEL": label})
+
+    # save
+            self.crm.addContact(c)
 
     def addPhonetoName(self, name, phone, label="WORK"):
 
