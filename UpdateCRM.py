@@ -224,13 +224,17 @@ class crm():
         for x in o:
             self.orgs[x['ORGANISATION_NAME']]=x['ORGANISATION_ID']
 
-    def checkDetails(self, id, name, who):
 
-# check for an existing entry if it is in step with linkedIn.
-# Extend later. For not it just appends a tag if missing
+    def getContact(self,id):
 
 # get contact details for supplied id
         contact = self.crm.getContact(id)
+        return(contact)
+
+
+    def checkOwner(self, contact, id, name, who):
+
+# check for an existing entry if it is in step with linkedIn.
 
 # create tag to add for owner
         tag={"TAG_NAME" : "LIContact-%s" % who}
@@ -244,12 +248,42 @@ class crm():
                 contact["TAGS"]=t
                 self.crm.addContact(contact)
 
-# no Tags so add from scrach
+# no Tags so add from scratch
         else:
             t=[tag]
             contacts["TAGS"]=t
             self.crm.addContact(contact)
 
+    def getOrgNamefromContact(self, contact):
+        try:
+            orgid=contact['LINKS'][0]['ORGANISATION_ID']
+            CRMcompany=self.crm.getOrganization(orgid)["ORGANISATION_NAME"]
+            return(CRMcompany)
+        except:
+            return('ERROR')
+
+    def updateCompany(self, contact, newcompany, newtitle):
+#        print json.dumps(contact, indent=4)
+        # See if we can find a matching organisation
+        if self.orgs.has_key(newcompany):
+            coid=self.orgs[newcompany]
+        else:
+            coid=self.addOrg(newcompany)
+
+# update contact in memory
+#        contact['DEFAULT_LINKED_ORGANISATION']=coid
+        contact['LINKS'][0]['ORGANISATION_ID']=coid
+        contact['LINKS'][0]['ROLE']=newtitle
+        contact['LINKS'][0]['LINK_ID']=None
+
+# add contact record to crm
+        try:
+            contact=self.crm.addContact(contact)
+        except urllib2.HTTPError as e:
+            print "Error adding contact."
+            print e
+            print json.dumps(contact)
+            sys.exit()
 
 class linkedIn():
 #################################
@@ -382,6 +416,8 @@ class controller():
 # processing engine                           #
 ###############################################
 
+    global GLOBALCONTACTLIST
+
     def __init__(self, crm, linkedIn):
         self.crm=crm
         self.linkedIn=linkedIn
@@ -421,8 +457,33 @@ class controller():
 
 # If we have a match then check it is still right
         for x in self.mapping.keys():
-            self.crm.checkDetails(self.mapping[x], self.linkedIn.getCheckDetails(x), self.who)
+            id=self.mapping[x]
+            name=self.linkedIn.getCheckDetails(x)[0]
+            self.checkDetails(id, name)
 
+    def checkDetails(self, id, name):
+# get contact object only once for performance
+        contact=self.crm.getContact(id)
+
+# check if the owner is set properly        
+        self.crm.checkOwner(contact, id, name, self.who)
+
+# Check if company has changed
+        if id not in GLOBALCONTACTLIST:
+
+            CRMCompany=self.crm.getOrgNamefromContact(contact)
+
+            if CRMCompany<>"ERROR":
+
+                l=self.linkedIn.getDetails(name)
+                LICompany=l['company']
+                if CRMCompany <> LICompany:
+                    print "%s has changed jobs from %s to %s" % (name, CRMCompany, LICompany)
+                    self.crm.updateCompany(contact, LICompany, l['title'])
+                GLOBALCONTACTLIST.append(id) # don't check again         
+
+            else:
+                print "Error getting company for %s" % name
 
 #############################################
 # These are the keys to connect to LinkedIn #
@@ -449,6 +510,8 @@ INSIGHT_KEY='1b59c7a6-98cc-4788-b4ae-d063453e04ab'
 if __name__ == "__main__":
 
     c=crm(INSIGHT_KEY)
+
+    GLOBALCONTACTLIST=[]   # so we don't check the same contacts multiple times
 
     print "Going through Tim's contacts..."
     i=linkedIn(tims_keys, "Tim")
