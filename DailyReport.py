@@ -11,15 +11,15 @@ import sys
 # download a new version of the real data. Unless you have an smtp server running, setting
 # dev to False will generate an error when it tries to email the results.
 dev=True
-dev=False
+#dev=False
 
 # Test settings
 to={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
 frm={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
 
 # Prod settings
-to={"name" : "Reports", "email" : "reports@17ways.com.au"}
-frm={"name" : "Daily CRM Report", "email" : "reports@17ways.com.au"}
+#to={"name" : "Reports", "email" : "reports@17ways.com.au"}
+#frm={"name" : "Daily CRM Report", "email" : "reports@17ways.com.au"}
 
 
 
@@ -601,11 +601,14 @@ a:hover {
       self.message+="<hr><h2>Breakdown of Tags on Contacts</h2>"
       self.message+="<h4>Numbers of people by tag type.</h4>"
 
+# Skills
+
       tab={}
 
       for x in self.c.getAllTags():
-         if x.find("Location")<>0 and x.find("LIContact")<>0:   # ignore the locations and contacts
-            tab[x]=len(self.c.getTag(x))   # get how many have this tag
+         if x.find("Skill-")==0:   # only get skills
+            y=x.replace("Skill-","")
+            tab[y]=len(self.c.getTag(x))   # get how many have this tag
 
       tabsort=sorted(tab.items(), key=lambda x: x[1])
 
@@ -628,13 +631,52 @@ a:hover {
       self.message+="<img height=300 width=580 src='%s'>" % url
 
       self.message+="<br><br><table  class='nice' border=1>"
-      self.message+="<tr><th>Tag Name<th>Number of Entries</tr>"
+      self.message+="<tr><th>Skill<th>Number of Entries</tr>"
 
 
       for x in tabsort:
-         self.message+="<tr><td><a href='https://y31b3txz.insight.ly/contacts/tags/?t=%s'>%s</a><td>%s</tr>" % (x[0], x[0], x[1])
+         self.message+="<tr><td><a href='https://y31b3txz.insight.ly/contacts/tags/?t=Skill-%s'>%s</a><td>%s</tr>" % (x[0], x[0], x[1])
 
       self.message+="</table>"
+
+# Type
+
+      tab={}
+
+      for x in self.c.getAllTags():
+         if x.find("Type-")==0:   # only get skills
+            y=x.replace("Type-","")
+            tab[y]=len(self.c.getTag(x))   # get how many have this tag
+
+      tabsort=sorted(tab.items(), key=lambda x: x[1])
+
+      tabsort.reverse()
+
+# create the url for the chart
+      part="chd=t:"
+      for x in tabsort:
+         part+="%s," % x[1]
+      part=part[:-1]
+      part+="&chdl="
+      for x in tabsort:
+         part+="%s," % x[0]
+      part=part[:-1]
+
+      part=part.replace(" ","%20")
+
+      url="https://chart.googleapis.com/chart?cht=p3&chs=580x300&" + part
+
+      self.message+="<img height=300 width=580 src='%s'>" % url
+
+      self.message+="<br><br><table  class='nice' border=1>"
+      self.message+="<tr><th>Type<th>Number of Entries</tr>"
+
+
+      for x in tabsort:
+         self.message+="<tr><td><a href='https://y31b3txz.insight.ly/contacts/tags/?t=Type-%s'>%s</a><td>%s</tr>" % (x[0], x[0], x[1])
+
+      self.message+="</table>"
+
 
    def byCompanyTag(self):
 # breakdown by tags
