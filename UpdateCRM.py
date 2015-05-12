@@ -15,6 +15,7 @@
 import json
 from linkedin import linkedin
 from insightly import Insightly
+import EmailHelper
 
 import base64
 import urllib2
@@ -411,6 +412,17 @@ class linkedIn():
 # later can extend it to comparing the summary and company
         return(self.lnk_connections_rev[id])
 
+class logger():
+    def __init__(self):
+        self.text=""
+
+    def log(self,m):
+        self.text+=m + "<br>"
+
+    def send(self):
+        if len(self.text)>0:
+            EmailHelper.send("LinkedIn to Insightly Feed",self.text)
+
 class controller():
 ###############################################
 # processing engine                           #
@@ -418,10 +430,11 @@ class controller():
 
     global GLOBALCONTACTLIST
 
-    def __init__(self, crm, linkedIn):
+    def __init__(self, crm, linkedIn, log):
         self.crm=crm
         self.linkedIn=linkedIn
         self.who=self.linkedIn.who
+        self.log=log
         self.match()
         self.load_exclusions()
 
@@ -452,7 +465,9 @@ class controller():
 # if there is no mapping then add user unless on the blocked list
         for x in self.nomapping:
             if x not in self.exclude:
-                print "Adding new contact: " + x.encode('ascii', 'ignore').decode('ascii')
+                message = "Adding new contact from " + self.who + ": " + x.encode('ascii', 'ignore').decode('ascii')
+                print message
+                self.log.log(message)
                 self.crm.addContact(self.linkedIn.getDetails(x), self.who)
 
 # If we have a match then check it is still right
@@ -478,7 +493,10 @@ class controller():
                 l=self.linkedIn.getDetails(name)
                 LICompany=l['company']
                 if CRMCompany <> LICompany:
-                    print "%s has changed jobs from %s to %s" % (name, CRMCompany, LICompany)
+                    message= "%s has changed jobs from %s to %s" % (name, CRMCompany, LICompany)
+                    message = message.encode('ascii', 'ignore').decode('ascii')
+                    print message
+                    self.log.log(message)
                     self.crm.updateCompany(contact, LICompany, l['title'])
                 GLOBALCONTACTLIST.append(id) # don't check again         
 
@@ -513,17 +531,25 @@ if __name__ == "__main__":
 
     GLOBALCONTACTLIST=[]   # so we don't check the same contacts multiple times
 
-    print "Going through Tim's contacts..."
-    i=linkedIn(tims_keys, "Tim")
-    r=controller(c, i)
-    r.run()
+    l=logger()
 
-    print "Going through Mark's contacts..."
-    i=linkedIn(marks_keys, "Mark")
-    r=controller(c, i)
-    r.run()
 
     print "Going through John's contacts..."
     i=linkedIn(johns_keys, "John")
-    r=controller(c, i)
+    r=controller(c, i, l)
     r.run()
+
+
+    print "Going through Tim's contacts..."
+    i=linkedIn(tims_keys, "Tim")
+    r=controller(c, i, l)
+    r.run()
+
+
+    print "Going through Mark's contacts..."
+    i=linkedIn(marks_keys, "Mark")
+    r=controller(c, i, l)
+    r.run()
+
+
+    l.send()
