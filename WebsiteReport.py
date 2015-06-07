@@ -1,5 +1,17 @@
 #!/usr/bin/python
 
+##### TODO
+###
+### Have a web page to hold details
+### Option on webpage to add to spiders
+### Read spiders from a file
+### Change to be __main__
+### Weekly option to slowly rebuild known IP info
+### Fix format on when
+### remove request specific fields from visitors
+### Add list of requests to visitorsdetails
+### Add popular pages list
+
 import gzip
 import time
 import shlex
@@ -9,6 +21,7 @@ import urllib
 import json
 import socket
 import smtplib
+import operator
 
 # Test settings
 to={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
@@ -35,17 +48,22 @@ class ApacheReader():
 
         self.include=[".php", ".html", "GET / HTTP/"]
         self.spiders=["spider"]
+        self.spiderhosts=["spider", "googlebot", "msnbot"]
         self.us="122.109.192.180"
 
 # counters
 
         self.spiderscnt=0
         self.uscnt=0
-        self.noisecnt=0
 
-# big list
+# big lists
 
-        self.visitors=[]
+        self.visitlist=[]           # all the visits we care about - main hits on pages not from us or web crawlers
+        self.visitors={}            # mapping of IP to relevant information on visitor
+        self.visitorcount={}        # mapping of IP to pages visited
+        self.pagesvisited={}        # mapping of page name to IP addresses that visited it
+        self.newvisitor=[]          # visits from people we haven't seen before
+        self.countries={}           # mapping of country codes to a list of IPs from there
 
 ###########################
 # load the file           #
@@ -75,10 +93,37 @@ class ApacheReader():
             self.processline(line)
             line=self.getnext()
 
+# now we have read the file and built a list of the visits that we care about in visitlist
+# visitlist is actually a list of every visit, so use this to build some other useful
+# lists and dictionaries
+
+#######
+# go through the list of visits and update various things
+#######
+        for x in self.visitlist:
+
+####
+# Main mapping of visitor IP to details
+####
+            if not self.visitors.has_key(x['ip']):
+                self.visitors[x['ip']]=self.IPHandler.getLocation(x['ip'])   # get details on this IP
+
+####
+# Number of visits
+####
+            if self.visitorcount.has_key(x['ip']):
+                self.visitorcount[x['ip']]=self.visitorcount[x['ip']]+1
+            else:
+                self.visitorcount[x['ip']]=1
+
+
+
+
 #####################################
 # process each line                 #
 #####################################
     def processline(self, line):
+
 
 # format the line
         parts=shlex.split(line)
@@ -90,6 +135,10 @@ class ApacheReader():
         rc=parts[6]
         referrer=parts[8]
         agent=parts[9]
+        when=parts[3][1:]
+
+# get the hostname
+        hostname=self.IPHandler.getLocation(ip)["hostname"]
 
     # is this a line we care about - only follow main entry points, not pictures etc
         relevant=False
@@ -108,48 +157,45 @@ class ApacheReader():
                     break
 
             if spider==False:
-    # check for us
+                for x in self.spiderhosts:
+                    if hostname.find(x)>=0:
+                        spider=True
+                        self.spiderscnt+=1
+                        break
+
+            if spider==False:
                 url=request.split()[1]
                 url=url.replace("%20"," ")
                 if url=="/" : url="the homepage"
 
-                stuff=self.IPHandler.getLocation(ip)
-
-    # add our other stuff
+    # add our stuff
+                stuff={}
                 stuff["url"]=url
                 stuff["ip"]=ip
                 stuff["request"]=request
                 stuff["rc"]=rc
                 stuff["referrer"]=referrer
                 stuff["agent"]=agent
+                stuff["when"]=when
 
                 if ip==self.us:
-                    stuff["us"]=True
+                    self.uscnt+=1
                 else:
-                    stuff["us"]=False
-
-#                print stuff
-
-                self.visitors.append(stuff)
-
-#                if ip==self.us:
-#                    print "You clowns. Looking at %s." % url
-#                else:
-#                    print "%s in %s. Looking at %s." % (loc["city"], loc["country_name"], url)
-#                    print "########################################################"
-#                    print "    IP   : %s" % ip
-#                    print "    Agent: %s" % agent
-#                    print "########################################################"
+                    self.visitlist.append(stuff)
 
 
-    def printit(self):
 
-        txt=""
+    def dataTotalVisitors(self):
 
-        for x in self.visitors:
-            txt+=x['ip'] + "<br>"
+# we want this sorted by number of visits
 
-        return(txt)
+        sorted_x = sorted(self.visitorcount.items(), key=operator.itemgetter(1), reverse=True)
+
+     #   print self.visitors['37.187.142.28']
+     #   print self.visitors['66.249.75.85']
+
+        return(sorted_x)
+
 
 class IPLookup():
 #########################################################
@@ -317,7 +363,8 @@ a:hover {
       self.message+="<td valign=middle><font size=96 color='#5d73b6'>Website Report - %s</font></tr></table><hr>" % day
       self.message+="Who has been on our website in the last 24 hours.<br>"
 
-      self.message+=self.data.printit()
+      self.message+=self.printVisitors()
+      self.message+=self.printVisitorsDetails()
 
       f=open("WebDaily.html", "w")
       for line in self.message:
@@ -326,6 +373,33 @@ a:hover {
 
 #      smtpObj = smtplib.SMTP('localhost')
 #      smtpObj.sendmail(frm['email'], [to['email']], self.message)
+
+   def printVisitors(self):
+      x=self.data.dataTotalVisitors()
+      msg="<h2>Top Visitors</h2>\n"
+      msg+="Excluding %s robots and us (%s).<br><br>\n" % (self.data.spiderscnt, self.data.uscnt)
+      msg+="<table class='nice' border=1>\n"
+      msg+="<tr><th>Hostname<th>Org<th>Timezone<th>Pages Viewed</tr>\n"
+      for (ip, times) in x:
+         msg+="<tr><td><a href=#%s>%s</a><td>%s<td>%s<td>%s</tr>\n" % (ip, self.data.visitors[ip]['hostname'], self.data.visitors[ip]['org'], self.data.visitors[ip]['timezone'], times)
+      msg+="</table>\n"
+
+      return(msg)
+
+   def printVisitorsDetails(self):
+      x=self.data.dataTotalVisitors()
+      msg="<h2>Visitors Details</h2>"
+      for (ip, times) in x:
+          msg+="\n\n<h3 id='%s'>%s</h3><table class='nice' border=1 width='80%%'>\n" % (ip, ip)
+          msg+="<tr><th width='30%'>Attribute<th width='70%'>Value</tr>\n"
+          y=self.data.visitors[ip]
+          for k in y.keys():
+             msg+="<tr><td width='30%%'>%s<td width='70%%'>%s</tr>\n" % (k, y[k])
+      msg+="</table>\n\n"
+
+      return(msg)
+
+
 
 # handler for IP lookups
 h=IPLookup()
