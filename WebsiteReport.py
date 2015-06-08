@@ -461,7 +461,7 @@ class Report():
          tits2="Website Report - %s" % day
       else:
          tits= "Special Report"
-         tits2="Special Report"
+         tits2="Special Report - %s" % range
 
       self.message+="""From: %s <%s>
 To: %s <%s>
