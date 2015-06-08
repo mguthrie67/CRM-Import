@@ -1,16 +1,14 @@
 #!/usr/bin/python
 
+dev=False
+dev=True
+
 ##### TODO
 ###
-### Have a web page to hold details
 ### Option on webpage to add to spiders
 ### Read spiders from a file
-### Change to be __main__
 ### Weekly option to slowly rebuild known IP info
 ### Fix format on when
-### remove request specific fields from visitors
-### Add list of requests to visitorsdetails
-### Add popular pages list
 
 import gzip
 import time
@@ -22,6 +20,9 @@ import json
 import socket
 import smtplib
 import operator
+import os.path
+from datetime import date, timedelta
+from optparse import OptionParser
 
 # Test settings
 to={"name" : "Mark Guthrie", "email" : "mark.guthrie@17ways.com.au"}
@@ -60,7 +61,8 @@ class ApacheReader():
 
         self.visitlist=[]           # all the visits we care about - main hits on pages not from us or web crawlers
         self.visitors={}            # mapping of IP to relevant information on visitor
-        self.visitorcount={}        # mapping of IP to pages visited
+        self.visitorcount={}        # mapping of IP to count of pages visited
+        self.visitorwhat={}         # mapping of IP to pages visited
         self.pagesvisited={}        # mapping of page name to IP addresses that visited it
         self.newvisitor=[]          # visits from people we haven't seen before
         self.countries={}           # mapping of country codes to a list of IPs from there
@@ -68,11 +70,74 @@ class ApacheReader():
 ###########################
 # load the file           #
 ###########################
-    def loadfile(self):
+# considering this started as 2 one line functions and I thought I didn't need them, its ended up as fucking mess
 
-# open the file
+    def loadfile(self, range):
 
-        self.filehandle=gzip.open("17ways.com.au-Jun-2015.gz")
+        self.range=range
+
+        #print "RANGE----" + self.range
+
+# we either get a value for range or we don't. If we do then it can be
+# range = today             - use today
+# range = dd/Mon/YYYY       - use date provided
+# range = all               - provide all data for the files we have
+# range = None              - when we get a value but we don't
+
+# 2 are dates, one is everything, one is default, so lets flag them
+
+        if self.range=="all":
+            self.callflag="all"
+            print "FILE - ALL"
+        elif self.range=="today":
+            print "FILE - TODAY"
+            self.callflag="today"
+        else:
+            print "FILE - DATE"
+            self.callflag="date"
+
+# open the file - we need to use 2 files and stitch them together
+# the archive file may contain data from yesterday and so may the live file
+# ~/logs/17ways.com.au-<Month>-<Year>.gz is the archive
+# ~/access-logs/17ways.com.au is the current file, seems to be rolled about 2pm, not zipped
+
+# Date stuff
+        if self.range==None or self.range=="all":
+            yesterday = date.today() - timedelta(days=1)    # in hindsight yesterday was a bad choice of variable name!
+# the month and year yesterday
+            MonthYear=yesterday.strftime('%b-%Y')
+# the date yesterday
+            self.yest=yesterday.strftime('%d/%b/%Y')
+
+        elif self.callflag=="today":
+            yesterday = date.today()                        # too true!
+# the month and year today
+            MonthYear=yesterday.strftime('%b-%Y')
+# the date yesterday
+            self.yest=yesterday.strftime('%d/%b/%Y')
+
+        elif self.callflag=="date":                          # specific date
+# the month and year provided
+            bits=range.split("/")
+            MonthYear="%s-%s" % (bits[1], bits[2])
+# the date provided
+            self.yest=self.range
+
+        print "Done that. Date is " + self.yest
+
+# File stuff
+        self.archivefile="/home/wayscoma/logs/17ways.com.au-%s.gz" % MonthYear
+        self.livefile="/home/wayscoma/access-logs/17ways.com.au"
+
+        if dev:
+            self.archivefile="17ways.com.au-%s.gz" % MonthYear
+            self.livefile="17ways.com.au"
+
+
+# start with the archive file
+        self.file=self.archivefile
+        print "Opening " + self.file
+        self.filehandle=gzip.open(self.file)
 
 
 ############################
@@ -80,8 +145,60 @@ class ApacheReader():
 ############################
     def getnext(self):
 
-        return(self.filehandle.readline())
+        line=self.filehandle.readline()
 
+# if we get false returned (EOF) then if it is the archive file, switch and open the live file
+        if not line:
+            print "Hit EOF on " + self.file
+            if self.file==self.livefile: # already switched
+                print "Already switched"
+                return(line)
+            else:
+                print "Switching"
+                self.filehandle.close()
+                self.file=self.livefile
+                self.filehandle=open(self.file)
+                print "Opening " + self.file
+                line=self.filehandle.readline()
+
+# easy option - if all was specified just give it
+        if self.callflag=="all":
+            return(line)
+
+# First time through we need to fast forward to yesterday
+    #    print line
+        datebit=line.split()[3]   # gives us [07/Jun/2015:16:38:22
+        datepart=datebit[1:12]    # gives us 07/Jun/2015
+
+        print "datepart: %s yesterday: %s" % (datepart, self.yest)
+
+        if datepart==self.yest:   # valid date
+            return(line)
+        else:                     # not a valid date - keep reading until EOF or valid date
+            while line:
+                line=self.filehandle.readline()
+                if line:
+                    datebit=line.split()[3]
+                    datepart=datebit[1:12]
+                    print "Looking...found: %s looking for %s" % (datepart, self.yest)
+                    if datepart==self.yest:    # found a valid one!
+                        return(line)
+# if we get here we have hit EOF without getting a valid date. We are either reading the live file so ok
+# or there were no hits in the archive for yesterday in which case we will miss all of the live file data
+# doesn't seem likely unless they change the time they roll the logfiles
+
+# Except... if we are looking for today
+
+                    if self.callflag=="today":
+                        print "Switching - special case"
+                        self.filehandle.close()
+                        self.file=self.livefile
+                        self.filehandle=open(self.file)
+                        print "Opening " + self.file
+                        line=self.filehandle.readline()    # must be today
+                        return(line)
+
+            return(False)
 
 ######################################
 # process file and build information #
@@ -107,6 +224,11 @@ class ApacheReader():
 ####
             if not self.visitors.has_key(x['ip']):
                 self.visitors[x['ip']]=self.IPHandler.getLocation(x['ip'])   # get details on this IP
+   #             del self.visitors[x['ip']]['url']
+    #            del self.visitors[x['ip']]['request']
+     #           del self.visitors[x['ip']]['referrer']
+     #           del self.visitors[x['ip']]['rc']
+      #          del self.visitors[x['ip']]['when']
 
 ####
 # Number of visits
@@ -116,9 +238,25 @@ class ApacheReader():
             else:
                 self.visitorcount[x['ip']]=1
 
+####
+# Pages visited by each IP      visitorwhat["1.2.3.4"]["Homepage"]==3  is 3 visits to homepage
+####
+            if self.visitorwhat.has_key(x['ip']):
+                if self.visitorwhat[x['ip']].has_key(x['url']):
+                    self.visitorwhat[x['ip']][x['url']]+=1
+                else:
+                    self.visitorwhat[x['ip']][x['url']]=1
+            else:
+                 self.visitorwhat[x['ip']]={}
+                 self.visitorwhat[x['ip']][x['url']]=1
 
-
-
+####
+# pages by number of visits
+####
+            if self.pagesvisited.has_key(x['url']):
+                self.pagesvisited[x['url']]+=1
+            else:
+                self.pagesvisited[x['url']]=1
 #####################################
 # process each line                 #
 #####################################
@@ -164,9 +302,10 @@ class ApacheReader():
                         break
 
             if spider==False:
-                url=request.split()[1]
+                url=request.split()[1][1:]
                 url=url.replace("%20"," ")
-                if url=="/" : url="the homepage"
+                if url=="" : url="homepage"
+                if url=="index.html" : url="homepage"
 
     # add our stuff
                 stuff={}
@@ -191,8 +330,14 @@ class ApacheReader():
 
         sorted_x = sorted(self.visitorcount.items(), key=operator.itemgetter(1), reverse=True)
 
-     #   print self.visitors['37.187.142.28']
-     #   print self.visitors['66.249.75.85']
+        return(sorted_x)
+
+
+    def dataTotalPages(self):
+
+# we want this sorted by number of visits
+
+        sorted_x = sorted(self.pagesvisited.items(), key=operator.itemgetter(1), reverse=True)
 
         return(sorted_x)
 
@@ -210,7 +355,8 @@ class IPLookup():
         self.iplist={}        # keep a list of resolved addresses so we don't hit the server unnecessarily and get banned
 
 # load from file - look at this later - maybe add a timer or throttle it
-        self.iplist=json.load(open("iplist.txt"))
+        if os.path.isfile("iplist.txt"):
+            self.iplist=json.load(open("iplist.txt"))
 
 
 #
@@ -255,6 +401,23 @@ class IPLookup():
         data["hostname"]=hostname
         data["alias"]=alias
 
+# check it worked
+        if data["status"]=="fail":
+            data["city"]="Unknown"
+            data["isp"]="Unknown"
+            data["zip"]="Unknown"
+            data["countryCode"]="Unknown"
+            data["country"]="Unknown"
+            data["region"]="Unknown"
+            data["lon"]="Unknown"
+            data["alias"]="Unknown"
+            data["as"]="Unknown"
+            data["lat"]="Unknown"
+            data["timezone"]="Unknown"
+            data["org"]="Unknown"
+            data["regionName"]="Unknown"
+            data["lat"]="Unknown"
+
         #print json.dumps(data)
 
 #        for x in data.keys():
@@ -282,11 +445,23 @@ class Report():
 
    global frm, to
 
-   def __init__(self, c):
+   def __init__(self, c, range):
+
       self.data=c
+
       self.message=""
+
 # Basic heading stuff for the email.
       day=time.strftime("%A")
+
+# Check how we were run
+
+      if range==None:     # normal use yesterday's date
+         tits="Website Daily Report - %s" % day
+         tits2="Website Report - %s" % day
+      else:
+         tits= "Special Report"
+         tits2="Special Report"
 
       self.message+="""From: %s <%s>
 To: %s <%s>
@@ -357,26 +532,39 @@ a:hover {
 </head>
 <body>
 
-""" % (frm["name"], frm["email"], to["name"], to["email"], "Daily Report - " + day)
+""" % (frm["name"], frm["email"], to["name"], to["email"], tits)
 
       self.message+="<table width=100%%><tr><td><img width=120px src=http://17ways.com.au/images/logo_slogan.png>"
-      self.message+="<td valign=middle><font size=96 color='#5d73b6'>Website Report - %s</font></tr></table><hr>" % day
-      self.message+="Who has been on our website in the last 24 hours.<br>"
+      self.message+="<td valign=middle><font size=96 color='#5d73b6'>%s</font></tr></table><hr>" % tits2
+      self.message+="Who has been on our website. <a href='http://17ways.com.au/tools/WebDaily.html'>View as webpage.</a><br>"
 
       self.message+=self.printVisitors()
+      self.message+=self.printPages()
       self.message+=self.printVisitorsDetails()
 
-      f=open("WebDaily.html", "w")
+# Finish
+      self.message+="</body></html>"
+
+      self.message=self.message.encode('ascii', 'ignore').decode('ascii')
+
+# Write webpage
+
+      webfile="/home/wayscoma/public_html/tools/WebDaily.html"
+      if dev:
+        webfile="WebDaily.html"
+      f=open(webfile, "w")
       for line in self.message:
          f.write(line)
       f.close()
 
-#      smtpObj = smtplib.SMTP('localhost')
-#      smtpObj.sendmail(frm['email'], [to['email']], self.message)
+# send email
+      if not dev:
+          smtpObj = smtplib.SMTP('localhost')
+          smtpObj.sendmail(frm['email'], [to['email']], self.message)
 
    def printVisitors(self):
       x=self.data.dataTotalVisitors()
-      msg="<h2>Top Visitors</h2>\n"
+      msg="<h2>All Visitors</h2>\n"
       msg+="Excluding %s robots and us (%s).<br><br>\n" % (self.data.spiderscnt, self.data.uscnt)
       msg+="<table class='nice' border=1>\n"
       msg+="<tr><th>Hostname<th>Org<th>Timezone<th>Pages Viewed</tr>\n"
@@ -390,31 +578,73 @@ a:hover {
       x=self.data.dataTotalVisitors()
       msg="<h2>Visitors Details</h2>"
       for (ip, times) in x:
-          msg+="\n\n<h3 id='%s'>%s</h3><table class='nice' border=1 width='80%%'>\n" % (ip, ip)
+          msg+="<br><hr>\n"
+          msg+="\n\n<h3 id='%s'>%s</h3>\n" % (ip, ip)
+
+# table of details
+          msg+="<table class='nice' border=1 width='80%'>\n"
           msg+="<tr><th width='30%'>Attribute<th width='70%'>Value</tr>\n"
           y=self.data.visitors[ip]
           for k in y.keys():
              msg+="<tr><td width='30%%'>%s<td width='70%%'>%s</tr>\n" % (k, y[k])
-      msg+="</table>\n\n"
+          msg+="<tr><td width='30%%'>Location<td width='70%%'><a href='https://www.google.com.au/maps/@%s,%s,15z'>Google Maps</a></tr>\n" % (y['lat'], y['lon'])
+
+          msg+="</table>\n\n"
+
+          msg+="<br><br>\n"
+
+# table of pages visited
+          msg+="<table class='nice' border=1>\n"
+          msg+="<tr><th>Pages Visited<th>Count</tr>\n"
+          y=self.data.visitorwhat[ip]
+          for k in y.keys():
+             msg+="<tr><td style='text-align:left;'>%s<td>%s</tr>\n" % (k, y[k])
+          msg+="</table>\n\n"
 
       return(msg)
 
 
+   def printPages(self):
+      x=self.data.dataTotalPages()
+      msg="<h2>All Pages</h2>\n"
+      msg+="Excluding %s robots and us (%s).<br><br>\n" % (self.data.spiderscnt, self.data.uscnt)
+      msg+="<table class='nice' border=1>\n"
+      msg+="<tr><th>Page<th>Views</tr>\n"
+      for (page, times) in x:
+         msg+="<tr><td>%s<td>%s</tr>\n" % (page, times)
+      msg+="</table>\n"
 
-# handler for IP lookups
-h=IPLookup()
+      return(msg)
 
-# get data
-c=ApacheReader(h)
-c.loadfile()
-c.dostuff()
+###############################################
+
+if __name__ == "__main__":
+
+# get parameters
+    parser = OptionParser(usage=" %prog -r [--range] date")
+    parser.add_option("-r", "--range", dest="range",
+                      help="today - uses latest data\ndd/Mon/YYYY (e.g. 02/Jun/2015)\nall - all we've got for this month")
+    (options, args) = parser.parse_args()
+
+    if options.range:
+        range=options.range
+    else:
+        range=None
+
+    # handler for IP lookups
+    h=IPLookup()
+
+    # get data
+    c=ApacheReader(h)
+    c.loadfile(range)
+    c.dostuff()
 
 
-# save what we know
-h.save()
+    # save what we know
+    h.save()
 
-# run the report
-Report(c)
+    # run the report
+    Report(c, range)
 
 
 
